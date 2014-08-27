@@ -29,6 +29,8 @@ setup(
     setup_requires=['vcversioner'],
     vcversioner={
         'version_module_paths': ['tributary/_version.py'],
+        'vcs_args': ['git', '--git-dir', '%(root)s/.git', 'describe',
+                  '--tags', '--long'],
     },
     install_requires=install_requires,
     tests_require=test_requires,

@@ -2,16 +2,29 @@
 # -*- coding: utf-8 -*-
 
 from tributary import *
-from . import exceptions, events
+from . import exceptions
 from .utilities import validateType
 import datetime, calendar, json
 import gevent
 from gevent import Greenlet
-from gevent.queue import Queue
+from gevent.queue import Queue, Empty
 from gevent.pool import Group
 
 
-__all__ = ['BasePredicate', 'BaseOverride', 'Message']
+__all__ = ['BasePredicate', 'BaseOverride', 'Message', 'BaseNode']
+
+def deser(obj):
+    """Default JSON serializer."""
+    if isinstance(obj, datetime.datetime):
+        if obj.utcoffset() is not None:
+            obj = obj - obj.utcoffset()
+        return obj.isoformat(' ')
+        # millis = int(
+        #     calendar.timegm(obj.timetuple()) * 1000 +
+        #     obj.microsecond / 1000
+        # )
+        # return millis
+    return obj
 
 
 class BasePredicate(object):
@@ -47,7 +60,7 @@ class Message(object):
         self.__dict__.update(**kwargs)
 
     @staticmethod
-    def create(cls, channel, forward=False, **kwargs):
+    def create(channel, forward=False, **kwargs):
         """Creates a new message with a given channel"""
         return Message(_channel=channel, _forward=forward, **kwargs)
 
@@ -76,7 +89,7 @@ class Message(object):
     @datetime.setter
     def datetime(self, value):
         self._datetime = value
-        self._utc = calendar.timegm(value) + value.microsecond / 1000000.
+        self._utc = calendar.timegm(value.timetuple()) + value.microsecond / 1000000.
 
     @property
     def source(self):
@@ -121,9 +134,9 @@ class Message(object):
         """Updates the params from the given key-word arguments."""
         self.__dict__.update(kwargs)
 
-    def __dict__(self):
-        """Returns a dictionary with all the parameters"""
-        return self.__dict__
+    # def __dict__(self):
+    #     """Returns a dictionary with all the parameters"""
+    #     return self.__dict__
 
     def __iter__(self):
         return iter(self.__dict__)
@@ -147,7 +160,7 @@ class Message(object):
         self.set(name, value)
 
     def __str__(self):
-        return json.dumps(dict(self))
+        return json.dumps(dict(self), default=deser)
 
 class BaseNode(Greenlet):
     """This is the base class for every node in the process tree. `BaseNode` manages the children of the various process nodes."""
@@ -172,9 +185,10 @@ class BaseNode(Greenlet):
 
         # on node start, execute preProcess
         self.on(events.START, self.preProcess)
+        self.on(events.START, lambda msg: setattr(self, 'running', True))
 
         # on node stop, set running to false, flush the queue and execute postProcess
-        self.on(events.STOP, lambda this, msg: self.running = False)
+        self.on(events.STOP, lambda msg: setattr(self, 'running', False))
         self.on(events.STOP, self.flush)
         self.on(events.STOP, self.postProcess)
 
@@ -188,6 +202,16 @@ class BaseNode(Greenlet):
     def sleep(self, seconds):
         """Makes the node sleep for the given seconds"""
         gevent.sleep(seconds)
+
+    def stop(self):
+        """Stop self and children"""
+        self.handle(events.StopMessage)
+
+    def start(self):
+        """Starts the nodes"""
+        for child in self.children:
+            child.start()
+        super(BaseNode, self).start()
 
     # @property
     # def state(self):
@@ -258,21 +282,21 @@ class BaseNode(Greenlet):
     def __iter__(self):
         return self.children
 
-    def preProcess(self, message):
+    def preProcess(self, message=None):
         """Pre processes the data source. Can be overriden."""
         pass
 
-    def process(self, message):
+    def process(self, message=None):
         """This is the function which generates the results."""
         raise NotImplementedError("process")
 
-    def postProcess(self, message):
+    def postProcess(self, message=None):
         """Post processes the data source. Can be overriden.
         Assumes inbox has been flushed and should close any open files / connections.
         """
         pass
 
-    def flush(self):
+    def flush(self, message=None):
         """Empties the queue"""
         for message in self.inbox:
             self.handle(message)
@@ -283,6 +307,7 @@ class BaseNode(Greenlet):
 
         self.log("Starting...")
         while self.running:
+            # self.log("Running...")
             try:
                 message = self.inbox.get_nowait()
                 self.handle(message)
@@ -293,25 +318,40 @@ class BaseNode(Greenlet):
             except Empty:
                 # Empty signifies that the queue is empty, so yield to another node
                 self.tick()
+                # pass
 
         self.log("Exiting...")
 
-    _run = execute
+    def _run(self):
+        self.execute()
 
     def scatter(self, message, forward=False):
         """Sends the results of this node to its children."""
-        if self.hasChildren():
-            self.emit('data', message, forward)
+        # if self.hasChildren():
+        self.emit('data', message, forward)
 
     def emit(self, channel, message, forward=False):
         """The `emit` function can be used to send 'out-of-band' messages to 
         any child nodes. This essentially allows a node to send special messages 
         to any nodes listening."""
-        validateType('message', Message, message)
+        # validateType('message', Message, message)
         message.channel = channel
         message.forward = forward
+        if self.verbose:
+            self.log("Sending message: %s on channel: %s" % (message, channel))
         for child in self.children:
-            child.inbox.put(message)
+            child.inbox.put_nowait(message)
+
+        # yields to event loop
+        self.tick()
+
+    def emitBatch(self, channel, messages, forward=False):
+        """Add all messages to child queues before yielding"""
+        for message in messages:
+            message.channel = channel
+            message.forward = forward
+            for child in self.children:
+                child.inbox.put_nowait(message)
 
         # yields to event loop
         self.tick()
@@ -334,12 +374,13 @@ class BaseNode(Greenlet):
 
         if message.channel in self.listeners:
             for function in self.listeners[message.channel]:
-                function(self, message)
+                function(message)
 
         # forwards message if allowed
         if message.forward:
+            self.log("Forwarding message on channel: %s" % message.channel)
             for child in self.children:
-                child.inbox.put(message)
+                child.inbox.put_nowait(message)
 
     def log(self, msg):
         """Logging capability is baked into every Node."""
@@ -351,17 +392,24 @@ class Engine(object):
         super(Engine, self).__init__()
         self.nodes = []
 
+    def _link(self, node):
+        print node
+
     def add(self, node):
         """Adds a node to the engine to be executed"""
         validateType('node', BaseNode, node)
-        node.inbox.put(events.StartMessage)
+        # node.inbox.put(events.StartMessage)
+        # node.link(self._link)
         self.nodes.append(node)
     
     def start(self):
         """Starts all the nodes"""
         for node in self.nodes:
             node.start()
-        gevent.joinall(nodes)
+            # node.inbox.put(events.StartMessage)
+        gevent.joinall(self.nodes)
+
+from . import events
 
 # class BaseDataSource(BaseNode):
 #     """docstring for DataSource"""

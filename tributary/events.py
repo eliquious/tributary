@@ -1,4 +1,6 @@
-from .core import Message
+# from . import core
+from core import *
+# import .core
 
 __doc__ = """This submodules simply contains static messages and channel names"""
 
