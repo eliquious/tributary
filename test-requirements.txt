@@ -1,0 +1,4 @@
+-rrequirements.txt
+nose
+coverage
+flake8

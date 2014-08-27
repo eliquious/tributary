@@ -1,0 +1,15 @@
+*~
+*.egg
+*.pyc
+*.pyo
+*.egg-info
+
+/.coverage
+/.tox
+/.venv
+
+build
+dist
+
+/version.txt
+/tributary/_version.py
