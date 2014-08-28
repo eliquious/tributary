@@ -24,6 +24,8 @@ def deser(obj):
         #     obj.microsecond / 1000
         # )
         # return millis
+    elif isinstance(obj, MessageContent):
+        return obj.__dict__
     return obj
 
 
@@ -40,71 +42,11 @@ class BaseOverride(object):
         """Overrides the message (or it's contents) with something else. This method should return the updated message."""
         raise NotImplementedError("apply")
 
-class Message(object):
-    """
-    Message is the base class for transferring data from one node to another as well 
-    as storing individual data elements (such as rows in a file).
-
-    This class has several useful features. Every Message instance has a timestamp
-    associated with it. The attributes of messages can be accessed via the 
-    `getitem` and the `getattr` functions.
-    """
+class MessageContent(object):
+    """docstring for MessageContent"""
     def __init__(self, **kwargs):
-        super(Message, self).__init__()
-        self.datetime = datetime.datetime.utcnow()
-        self._source = None
-        self._channel = 'data'
-        self._forward = False
-
-        # add properties at creation
+        super(MessageContent, self).__init__()
         self.__dict__.update(**kwargs)
-
-    @staticmethod
-    def create(channel, forward=False, **kwargs):
-        """Creates a new message with a given channel"""
-        return Message(_channel=channel, _forward=forward, **kwargs)
-
-    @property
-    def channel(self):
-        return self._channel
-    @channel.setter
-    def channel(self, value):
-        self._channel = value
-
-    @property
-    def forward(self):
-        return self._forward
-    @forward.setter
-    def forward(self, value):
-        self._forward = value
-
-    @property
-    def utc(self):
-        return self._utc
-
-    @property
-    def datetime(self):
-        return self._datetime
-
-    @datetime.setter
-    def datetime(self, value):
-        self._datetime = value
-        self._utc = calendar.timegm(value.timetuple()) + value.microsecond / 1000000.
-
-    @property
-    def source(self):
-        return self._source
-    @source.setter
-    def source(self, value):
-        self._source = value    
-
-    def __getstate__(self):
-        return self.__dict__
-
-    def __setstate__(self, state):
-        for k, v in state.items():
-            self.__dict__[k] = v
-        return self
 
     def __delitem__(self, name):
         delattr(self, name)
@@ -134,10 +76,6 @@ class Message(object):
         """Updates the params from the given key-word arguments."""
         self.__dict__.update(kwargs)
 
-    # def __dict__(self):
-    #     """Returns a dictionary with all the parameters"""
-    #     return self.__dict__
-
     def __iter__(self):
         return iter(self.__dict__)
 
@@ -161,6 +99,81 @@ class Message(object):
 
     def __str__(self):
         return json.dumps(dict(self), default=deser)
+
+class Message(object):
+    """
+    Message is the base class for transferring data from one node to another as well 
+    as storing individual data elements (such as rows in a file).
+
+    This class has several useful features. Every Message instance has a timestamp
+    associated with it. The attributes of messages can be accessed via the 
+    `getitem` and the `getattr` functions.
+    """
+    def __init__(self, **kwargs):
+        super(Message, self).__init__()
+        self.datetime = datetime.datetime.utcnow()
+        # self._source = None
+        self._channel = 'data'
+        self._forward = False
+
+        # add properties at creation
+        self.data = MessageContent(**kwargs)
+
+    @staticmethod
+    def create(channel, forward=False, **kwargs):
+        """Creates a new message with a given channel"""
+        msg = Message(**kwargs)
+        msg.channel = channel
+        msg.forward = forward
+        return msg
+
+    @property
+    def channel(self):
+        return self._channel
+    @channel.setter
+    def channel(self, value):
+        self._channel = value
+
+    @property
+    def forward(self):
+        return self._forward
+    @forward.setter
+    def forward(self, value):
+        self._forward = value
+
+    @property
+    def utc(self):
+        return self._utc
+
+    @property
+    def datetime(self):
+        return self._datetime
+
+    @datetime.setter
+    def datetime(self, value):
+        self._datetime = value
+        self._utc = calendar.timegm(value.timetuple()) + value.microsecond / 1000000.
+
+    # @property
+    # def source(self):
+    #     return self._source
+    # @source.setter
+    # def source(self, value):
+    #     self._source = value    
+
+    # def __getstate__(self):
+    #     return self.__dict__
+
+    # def __setstate__(self, state):
+    #     for k, v in state.items():
+    #         self.__dict__[k] = v
+    #     return self
+
+    def __iter__(self):
+        return iter(self.__dict__)
+
+    def __str__(self):
+        return json.dumps((self.__dict__), default=deser)
 
 class BaseNode(Greenlet):
     """This is the base class for every node in the process tree. `BaseNode` manages the children of the various process nodes."""
@@ -188,12 +201,15 @@ class BaseNode(Greenlet):
         self.on(events.START, lambda msg: setattr(self, 'running', True))
 
         # on node stop, set running to false, flush the queue and execute postProcess
-        self.on(events.STOP, lambda msg: setattr(self, 'running', False))
         self.on(events.STOP, self.flush)
         self.on(events.STOP, self.postProcess)
+        self.on(events.STOP, lambda msg: setattr(self, 'running', False))
+        # self.on(events.STOP, self.kill)
 
         # on kill, call postProcess
         self.on(events.KILL, self.postProcess)
+        self.on(events.KILL, lambda msg: setattr(self, 'running', False))
+        # self.on(events.KILL, self.kill)
 
     def tick(self):
         """Yeilds the event loop to another node"""
@@ -206,9 +222,12 @@ class BaseNode(Greenlet):
     def stop(self):
         """Stop self and children"""
         self.handle(events.StopMessage)
+        gevent.joinall(list(self.children))
+        # self.tick()
 
     def start(self):
         """Starts the nodes"""
+        self.handle(events.StartMessage)
         for child in self.children:
             child.start()
         super(BaseNode, self).start()
@@ -298,8 +317,9 @@ class BaseNode(Greenlet):
 
     def flush(self, message=None):
         """Empties the queue"""
-        for message in self.inbox:
-            self.handle(message)
+        if not self.inbox.empty():
+            for message in self.inbox:
+                self.handle(message)
 
     def execute(self):
         """Executes the preProcess, process, postProcess, scatter and gather methods"""
@@ -320,6 +340,8 @@ class BaseNode(Greenlet):
                 self.tick()
                 # pass
 
+        self.tick()
+        self.stop()
         self.log("Exiting...")
 
     def _run(self):
@@ -337,6 +359,7 @@ class BaseNode(Greenlet):
         # validateType('message', Message, message)
         message.channel = channel
         message.forward = forward
+        # message.source = self
         if self.verbose:
             self.log("Sending message: %s on channel: %s" % (message, channel))
         for child in self.children:
@@ -350,6 +373,7 @@ class BaseNode(Greenlet):
         for message in messages:
             message.channel = channel
             message.forward = forward
+            # message.source = self
             for child in self.children:
                 child.inbox.put_nowait(message)
 
@@ -369,18 +393,21 @@ class BaseNode(Greenlet):
         """Handles events received on a given channel and forwards it if allowed."""
 
         # logging message
-        if self.verbose:
-            self.log("Processing message: %s" % message)
+        # if self.verbose:
+        # self.log("Processing message: %s" % message)
 
         if message.channel in self.listeners:
             for function in self.listeners[message.channel]:
+                # print function
                 function(message)
 
         # forwards message if allowed
         if message.forward:
-            self.log("Forwarding message on channel: %s" % message.channel)
+            # self.log("Forwarding message on channel: %s" % message.channel)
             for child in self.children:
+                # child.handle(message)
                 child.inbox.put_nowait(message)
+            self.tick()
 
     def log(self, msg):
         """Logging capability is baked into every Node."""
@@ -404,10 +431,22 @@ class Engine(object):
     
     def start(self):
         """Starts all the nodes"""
+        start = datetime.datetime.now()
+        log_script_activity("Engine", "Engine started...")
         for node in self.nodes:
             node.start()
             # node.inbox.put(events.StartMessage)
         gevent.joinall(self.nodes)
+
+        # signal stop
+        for node in self.nodes:
+            node.stop()
+
+        elapsed = datetime.datetime.now() - start
+        log_script_activity("Engine", "Elapsed: %s" % elapsed)
+
+        # for node in self.nodes:
+        #     gevent.joinall(list(node.children))
 
 from . import events
 
