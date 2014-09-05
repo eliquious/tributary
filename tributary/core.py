@@ -203,13 +203,20 @@ class BaseNode(Greenlet):
         # on node stop, set running to false, flush the queue and execute postProcess
         self.on(events.STOP, self.flush)
         self.on(events.STOP, self.postProcess)
-        self.on(events.STOP, lambda msg: setattr(self, 'running', False))
+        # self.on(events.STOP, lambda msg: setattr(self, 'running', False))
         # self.on(events.STOP, self.kill)
 
         # on kill, call postProcess
         self.on(events.KILL, self.postProcess)
         self.on(events.KILL, lambda msg: setattr(self, 'running', False))
         # self.on(events.KILL, self.kill)
+
+        # stop dependencies
+        self.dependencies = []
+
+    def waitFor(self, *dependencies):
+        self.dependencies = dependencies
+        return self
 
     def tick(self):
         """Yeilds the event loop to another node"""
@@ -227,10 +234,11 @@ class BaseNode(Greenlet):
 
     def start(self):
         """Starts the nodes"""
-        self.handle(events.StartMessage)
-        for child in self.children:
-            child.start()
-        super(BaseNode, self).start()
+        if not self.running:
+            self.handle(events.StartMessage)
+            for child in self.children:
+                child.start()
+            super(BaseNode, self).start()
 
     # @property
     # def state(self):
@@ -317,9 +325,21 @@ class BaseNode(Greenlet):
 
     def flush(self, message=None):
         """Empties the queue"""
+
+        # gevent.joinall(self.dependencies)
+        # waiting = True
+        # while waiting:
+        #     waiting = False
+        #     for dep in self.dependencies:
+        #         if dep.running:
+        #             waiting = True
+        #     self.tick()
+
+        self.log("Flushing Queue...")
         if not self.inbox.empty():
             for message in self.inbox:
                 self.handle(message)
+        self.running = False
 
     def execute(self):
         """Executes the preProcess, process, postProcess, scatter and gather methods"""
@@ -356,7 +376,7 @@ class BaseNode(Greenlet):
         """The `emit` function can be used to send 'out-of-band' messages to 
         any child nodes. This essentially allows a node to send special messages 
         to any nodes listening."""
-        # validateType('message', Message, message)
+        validateType('message', Message, message)
         message.channel = channel
         message.forward = forward
         # message.source = self
@@ -379,6 +399,17 @@ class BaseNode(Greenlet):
 
         # yields to event loop
         self.tick()
+
+    def removeListener(self, channel, function):
+        """Removes a listener function from a channel"""
+        if channel in self.listeners:
+            try:
+                self.listeners[channel].remove(function)
+                return True
+            except ValueError:
+                return False
+        else:
+            return False
 
     def on(self, channel, function):
         """Registers event listeners based on a channel.
@@ -407,7 +438,7 @@ class BaseNode(Greenlet):
             for child in self.children:
                 # child.handle(message)
                 child.inbox.put_nowait(message)
-            self.tick()
+            # self.tick()
 
     def log(self, msg):
         """Logging capability is baked into every Node."""

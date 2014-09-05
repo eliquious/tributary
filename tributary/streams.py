@@ -7,7 +7,7 @@ nodes handle each 'message' they are given 'completely'. By default, they do
 not store any messages but instead pass them along to any child nodes.
 """
 
-import . as tributary
+import tributary
 from .core import BaseNode, BasePredicate, BaseOverride, Message
 from .utilities import validateType
 
@@ -18,7 +18,7 @@ class LimitPredicate(BasePredicate):
         self.limit = limit + 1
         self.count = 0
 
-    def isValid(self, msg):
+    def apply(self, msg):
         self.count += 1
         if self.count < self.limit:
             return True
@@ -31,7 +31,7 @@ class SkipPredicate(BasePredicate):
         self.skip = skip + 1
         self.count = 0
 
-    def isValid(self, msg):
+    def apply(self, msg):
         self.count += 1
         if self.count > self.skip:
             return True
@@ -102,31 +102,26 @@ class StreamElement(BaseNode):
         self.addFilter(SkipPredicate(count))
         return self
 
-    def execute(self, input=None):
-        """Handles the data flow for streams."""
+    def execute(self):
+        """Handles the data flow for streams"""
+        self.running = True
 
-        # Should be false on the first message received.
-        # The preProcess function should handle any initialization for this stream.
-        if not self.initialized:
-            self.preProcess(input)
-            self.log("Initializing...")
-
-        # If the input is None, then it signals the end of the stream. None should
-        # be considered a poison-pill. Sending None to child nodes will signal
-        # them to close as well.
-        if input is not None:
+        self.log("Starting...")
+        while self.running:
 
             # Boolean flag to determine message validity
             valid = True
+            
             try:
+                message = self.inbox.get_nowait()
+
                 # Iterates over all the filters and overrides to modify the
                 # stream's default capability.
                 for modifier in self.modifiers:
                     if isinstance(modifier, BaseOverride):
-                        if modifier.isOverriden(input):
-                            input = modifier.override(input)
+                        message = modifier.apply(message)
                     elif isinstance(modifier, BasePredicate):
-                        if not modifier.isValid(input):
+                        if not modifier.apply(message):
                             valid = False
 
                             # Must be a break and not return because setting
@@ -138,152 +133,130 @@ class StreamElement(BaseNode):
                 if valid:
 
                     # process the incoming message
-                    # Must set the self.state variable.
-                    self.process(input)
+                    self.handle(message)
 
-                    # send state to children if this flag is set and
-                    #   self.state is not None
-                    if self.alwaysScatter:
-                        if self.state is not None:
-                            self.scatter(self.state)
-                            self.gather()
-            except:
+                # yield to event loop after processing the message
+                self.tick()
+
+            except Empty:
+
+                # Empty signifies that the queue is empty, so yield to another node
+                self.tick()
+            except Exception:
                 tributary.log_exception(self.name, "Error in '%s': %s" % (self.__class__.__name__, self.name))
-        else:
+                self.tick()
 
-            # Closes the stream if the input is None and the stream has been
-            # initialized.
-            if self.initialized:
-                # Finializes the stream node
-                self.postProcess(None)
-
-                # Kill child nodes
-                self.scatter(None)
-
-                # Post process the children
-                self.gather()
-                self.log("Exiting...")
-
-        # Sets the init flag on the first time through
-        if not self.initialized:
-            self.initialized = True
-
-    def scatter(self, input=None):
-        """Sends the state of this node to its children."""
-        for i, child in self.elements.itervalues():
-            child.execute(input)
-
-class StreamEngine(StreamElement):
-    """StreamEngine starts the processing on all the streams."""
-    def __init__(self, name="Engine"):
-        super(StreamEngine, self).__init__(name)
-
-    def process(self, input):
-        """Doesn't do anything."""
-        pass
-
-    def start(self):
-        """Executes the child streams"""
-        try:
-            self.scatter()
-        except KeyboardInterrupt:
-            self.log("Ctrl-C pressed: Exiting..")
-        except:
-            tributary.log_exception(self.name, "Error thrown:")
+        # self.tick()
+        self.stop()
+        self.log("Exiting...")
 
 class StreamProducer(StreamElement):
     """StreamProducer is an 'output' only stream. It does not process any
     incoming messages. Publishing messages is done manually inside the process method."""
 
-    def execute(self, _input=None):
-        """Executes the preProcess, process, postProcess, scatter and gather methods"""
-
-        # Initializes the stream
-        self.preProcess(_input)
-
-        # Publishes state to child nodes
-        self.process(_input)
-
-        # Closes the stream
-        self.postProcess(_input)
-
-        # Closes child nodes
-        self.scatter(None)
-
-        # Post-processes any child nodes
-        self.gather()
-
-    def scatter(self, input=None):
-        """Sends the state of this node to its children."""
-        if input is not None:
+    def validate(self, message):
+        if message is not None:
             for modifier in self.modifiers:
                 if isinstance(modifier, BaseOverride):
-                    input = modifier.apply(input)
+                    message = modifier.apply(message)
                 elif isinstance(modifier, BasePredicate):
-                    if not modifier.apply(input):
-                        return
+                    if not modifier.apply(message):
+                        return False
+        return True
 
-        for i, child in self.elements.itervalues():
-            child.execute(input)
 
-class Sink(StreamElement):
-    """Sink hold their state until the end then publishes it to any
-    child nodes. Children of Sink nodes should only expect one value."""
-    def execute(self, input=None):
+    def execute(self):
+        """Executes the preProcess, process, postProcess, scatter and gather methods"""
 
-        # Should be false on the first message received.
-        # The preProcess function should handle any initialization for this stream.
-        if not self.initialized:
-            self.preProcess(input)
-            self.log("Initializing...")
+        # start
+        self.log("Starting...")
 
-        # If the input is None, then it signals the end of the stream. None should
-        # be considered a poison-pill.
-        if input is not None:
-            try:
-                # Iterates over all the filters and overrides to modify the
-                # stream's default capability.
-                for modifier in self.modifiers:
-                    if isinstance(modifier, BaseOverride):
-                        input = modifier.apply(input)
-                    elif isinstance(modifier, BasePredicate):
-                        if not modifier.apply(input):
-                            return
+        # process
+        self.process()
 
-                # Processes the input. Stores any intermediate results in self.state.
-                self.process(input)
-            except:
-                tributary.log_exception(self.name, "Error in '%s': %s" % (self.__class__.__name__, self.name))
-        else:
-            # Closes the Sink node if None is received and the node has been initialized
-            if self.initialized:
+        # done
+        self.log("Exiting...")
 
-                # Closes the Sink
-                self.postProcess(None)
+        # stopping current node and sending stop message to child nodes
+        self.stop()
 
-                # Published the state to any child nodes
-                self.scatter(self.state)
+    def emit(self, channel, message, forward=False):
+        """The `emit` function can be used to send 'out-of-band' messages to 
+        any child nodes. This essentially allows a node to send special messages 
+        to any nodes listening."""
+        validateType('message', Message, message)
+        message.channel = channel
+        message.forward = forward
+        # message.source = self
 
-                # Post processes any child nodes
-                self.gather()
-                self.log("Exiting...")
+        if self.validate(message):
+            if self.verbose:
+                self.log("Sending message: %s on channel: %s" % (message, channel))
 
-        # Sets the init flag on the first message recieved
-        if not self.initialized:
-            self.initialized = True
+            for child in self.children:
+                child.inbox.put_nowait(message)
 
-class StreamCounter(Sink):
-    """StreamCounter is a sink which only counts
-    the number of messages it has received."""
-    def __init__(self, name):
-        super(StreamCounter, self).__init__(name)
-        self.count = 0
-        self.state = Message()
+        # yields to event loop
+        self.tick()
 
-    def process(self, pkt):
-        self.count += 1
+# class Sink(StreamElement):
+#     """Sink hold their state until the end then publishes it to any
+#     child nodes. Children of Sink nodes should only expect one value."""
+#     def execute(self, input=None):
 
-    def postProcess(self, pkt):
-        self.state.name = self.name
-        self.state["count"] = self.count
+#         # Should be false on the first message received.
+#         # The preProcess function should handle any initialization for this stream.
+#         if not self.initialized:
+#             self.preProcess(input)
+#             self.log("Initializing...")
+
+#         # If the input is None, then it signals the end of the stream. None should
+#         # be considered a poison-pill.
+#         if input is not None:
+#             try:
+#                 # Iterates over all the filters and overrides to modify the
+#                 # stream's default capability.
+#                 for modifier in self.modifiers:
+#                     if isinstance(modifier, BaseOverride):
+#                         input = modifier.apply(input)
+#                     elif isinstance(modifier, BasePredicate):
+#                         if not modifier.apply(input):
+#                             return
+
+#                 # Processes the input. Stores any intermediate results in self.state.
+#                 self.process(input)
+#             except:
+#                 tributary.log_exception(self.name, "Error in '%s': %s" % (self.__class__.__name__, self.name))
+#         else:
+#             # Closes the Sink node if None is received and the node has been initialized
+#             if self.initialized:
+
+#                 # Closes the Sink
+#                 self.postProcess(None)
+
+#                 # Published the state to any child nodes
+#                 self.scatter(self.state)
+
+#                 # Post processes any child nodes
+#                 self.gather()
+#                 self.log("Exiting...")
+
+#         # Sets the init flag on the first message recieved
+#         if not self.initialized:
+#             self.initialized = True
+
+# class StreamCounter(Sink):
+#     """StreamCounter is a sink which only counts
+#     the number of messages it has received."""
+#     def __init__(self, name):
+#         super(StreamCounter, self).__init__(name)
+#         self.count = 0
+#         self.state = Message()
+
+#     def process(self, pkt):
+#         self.count += 1
+
+#     def postProcess(self, pkt):
+#         self.state.name = self.name
+#         self.state["count"] = self.count
 

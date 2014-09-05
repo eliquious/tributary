@@ -1,15 +1,6 @@
 # Exceptions used in Tributary
 
-__all__ = ["NotImplementedYet", "NodeDoesNotExist"]
-
-class NotImplementedYet(Exception):
-    """NotImplementedYet can be raised if a function has not been implemented. """
-    def __init__(self, func_name):
-        super(NotImplementedYet, self).__init__()
-        self.func_name = func_name
-
-    def __str__(self):
-        return "Method not implemented yet: '%s'" % self.func_name
+__all__ = ["NodeDoesNotExist"]
 
 class NodeDoesNotExist(Exception):
     """NodeDoesNotExist is raised when a node is queried for
