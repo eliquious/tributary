@@ -10,6 +10,7 @@ not store any messages but instead pass them along to any child nodes.
 import tributary
 from .core import BaseNode, BasePredicate, BaseOverride, Message
 from .utilities import validateType
+from gevent.queue import Empty
 
 class LimitPredicate(BasePredicate):
     """LimitPredicate is used to limit the number of messages processed by the stream node"""
@@ -147,7 +148,7 @@ class StreamElement(BaseNode):
                 self.tick()
 
         # self.tick()
-        self.stop()
+        # self.stop()
         self.log("Exiting...")
 
 class StreamProducer(StreamElement):
@@ -171,12 +172,14 @@ class StreamProducer(StreamElement):
         self.log("Starting...")
 
         # process
-        self.process()
+        self.process(None)
 
         # done
         self.log("Exiting...")
 
         # stopping current node and sending stop message to child nodes
+        # this is now handled by the engine
+        # calling stop here prematurely cancels consumers. this could be bad if more than one producer it feeding this consumer.
         # self.stop()
 
     def emit(self, channel, message, forward=False):
