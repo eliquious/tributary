@@ -164,7 +164,6 @@ class StreamProducer(StreamElement):
                         return False
         return True
 
-
     def execute(self):
         """Executes the preProcess, process, postProcess, scatter and gather methods"""
 
@@ -178,7 +177,7 @@ class StreamProducer(StreamElement):
         self.log("Exiting...")
 
         # stopping current node and sending stop message to child nodes
-        self.stop()
+        # self.stop()
 
     def emit(self, channel, message, forward=False):
         """The `emit` function can be used to send 'out-of-band' messages to 

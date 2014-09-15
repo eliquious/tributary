@@ -10,7 +10,6 @@ from gevent import Greenlet
 from gevent.queue import Queue, Empty
 from gevent.pool import Group
 
-
 __all__ = ['BasePredicate', 'BaseOverride', 'Message', 'BaseNode']
 
 def deser(obj):
@@ -211,12 +210,12 @@ class BaseNode(Greenlet):
         self.on(events.KILL, lambda msg: setattr(self, 'running', False))
         # self.on(events.KILL, self.kill)
 
-        # stop dependencies
-        self.dependencies = []
+    #     # stop dependencies
+    #     self.dependencies = []
 
-    def waitFor(self, *dependencies):
-        self.dependencies = dependencies
-        return self
+    # def waitFor(self, *dependencies):
+    #     self.dependencies = dependencies
+    #     return self
 
     def tick(self):
         """Yeilds the event loop to another node"""
@@ -361,7 +360,7 @@ class BaseNode(Greenlet):
                 # pass
 
         self.tick()
-        self.stop()
+        # self.stop()
         self.log("Exiting...")
 
     def _run(self):
