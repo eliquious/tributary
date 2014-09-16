@@ -8,7 +8,7 @@ not store any messages but instead pass them along to any child nodes.
 """
 
 import tributary
-from .core import BaseNode, BasePredicate, BaseOverride, Message
+from .core import Actor, BasePredicate, BaseOverride, Message
 from .utilities import validateType
 from gevent.queue import Empty
 
@@ -52,7 +52,7 @@ class SkipLimitPredicate(BasePredicate):
             return True
         return False
 
-class StreamElement(BaseNode):
+class StreamElement(Actor):
     """Streams send their processed data to their children as soon as they have
     finished processing it themselves."""
     def __init__(self, name, alwaysScatter=True):

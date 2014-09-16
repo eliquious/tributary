@@ -10,7 +10,7 @@ from gevent import Greenlet
 from gevent.queue import Queue, Empty
 from gevent.pool import Group
 
-__all__ = ['BasePredicate', 'BaseOverride', 'Message', 'BaseNode']
+__all__ = ['BasePredicate', 'BaseOverride', 'Message', 'Actor']
 
 def deser(obj):
     """Default JSON serializer."""
@@ -176,10 +176,10 @@ class Message(object):
     def __str__(self):
         return json.dumps((self.__dict__), default=deser)
 
-class BaseNode(Greenlet):
-    """This is the base class for every node in the process tree. `BaseNode` manages the children of the various process nodes."""
+class Actor(Greenlet):
+    """This is the base class for every node in the process tree. `Actor` manages the children of the various process nodes."""
     def __init__(self, name, verbose=False):
-        super(BaseNode, self).__init__()
+        super(Actor, self).__init__()
         self.inbox = Queue()
         self.name = name
         self.running = False
@@ -238,7 +238,7 @@ class BaseNode(Greenlet):
             self.handle(events.StartMessage)
             for child in self.children:
                 child.start()
-            super(BaseNode, self).start()
+            super(Actor, self).start()
 
     # @property
     # def state(self):
@@ -254,7 +254,7 @@ class BaseNode(Greenlet):
 
     def add(self, node, lazy=False):
         """Adds a child to the current node."""
-        validateType("node", BaseNode, node)
+        validateType("node", Actor, node)
         if not lazy:
             if node.name in self._children:
                 raise Exception("Same name siblings are not allowed. Child node, %s, already exists." % node.name)
@@ -460,7 +460,7 @@ class Engine(object):
 
     def add(self, node):
         """Adds a node to the engine to be executed"""
-        validateType('node', BaseNode, node)
+        validateType('node', Actor, node)
         # node.inbox.put(events.StartMessage)
         # node.link(self._link)
         self.nodes.append(node)
@@ -490,7 +490,7 @@ class Engine(object):
 
 from . import events
 
-# class BaseDataSource(BaseNode):
+# class BaseDataSource(Actor):
 #     """docstring for DataSource"""
 #     def __init__(self, name):
 #         super(BaseDataSource, self).__init__(name)
