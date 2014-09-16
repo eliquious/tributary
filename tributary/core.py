@@ -129,6 +129,7 @@ class Message(object):
     @property
     def channel(self):
         return self._channel
+
     @channel.setter
     def channel(self, value):
         self._channel = value
@@ -136,6 +137,7 @@ class Message(object):
     @property
     def forward(self):
         return self._forward
+
     @forward.setter
     def forward(self, value):
         self._forward = value
@@ -210,12 +212,8 @@ class BaseNode(Greenlet):
         self.on(events.KILL, lambda msg: setattr(self, 'running', False))
         # self.on(events.KILL, self.kill)
 
-    #     # stop dependencies
-    #     self.dependencies = []
-
-    # def waitFor(self, *dependencies):
-    #     self.dependencies = dependencies
-    #     return self
+        # listen to exceptions
+        self.link_exception(self.handle_exception)
 
     def tick(self):
         """Yeilds the event loop to another node"""
@@ -224,6 +222,9 @@ class BaseNode(Greenlet):
     def sleep(self, seconds):
         """Makes the node sleep for the given seconds"""
         gevent.sleep(seconds)
+
+    def handle_exception(self, exc):
+        pass
 
     def stop(self):
         """Stop self and children"""
@@ -359,7 +360,7 @@ class BaseNode(Greenlet):
                 self.tick()
                 # pass
 
-        self.tick()
+        # self.tick()
         # self.stop()
         self.log("Exiting...")
 
@@ -394,7 +395,11 @@ class BaseNode(Greenlet):
             message.forward = forward
             # message.source = self
             for child in self.children:
+                # child.inbox.queue.extend(messages)
                 child.inbox.put_nowait(message)
+
+        # for child in self.children:
+            # child.inbox.queue.extend(messages)
 
         # yields to event loop
         self.tick()
@@ -443,6 +448,7 @@ class BaseNode(Greenlet):
         """Logging capability is baked into every Node."""
         log_activity(str(self.name).upper(), msg, str(type(self).__name__))
 
+
 class Engine(object):
     """docstring for Engine"""
     def __init__(self):
@@ -466,7 +472,11 @@ class Engine(object):
         for node in self.nodes:
             node.start()
             # node.inbox.put(events.StartMessage)
-        gevent.joinall(self.nodes)
+
+        try:
+            gevent.joinall(self.nodes)
+        except (KeyboardInterrupt, SystemExit):
+            log_script_activity("Engine", "Ctrl-C: Stopping processes")
 
         # signal stop
         for node in self.nodes:
