@@ -10,7 +10,6 @@ except ImportError:
     __revision__ = "UNKNOWN"
 
 import logging, sys
-import ext
 
 __all__ = ['log_script_activity', 'log_exception', 'log_info', 'log_debug', 'log_warning', 'log_error', 'log_critical', 'log_activity']
 
@@ -46,7 +45,7 @@ def log_activity(producer, msg, category):
     """
     ltype = str(category).upper()
     alias = str(producer).upper()
-    
+
     if 'INFO' in ltype:
         logger.info("%s [%s] - %s", ltype, alias, msg)
     elif 'DEBUG' in ltype:
@@ -106,6 +105,7 @@ def log_info(script_alias, msg):
     """
     log_activity(script_alias, msg, 'INFO')
 
+
 def log_debug(script_alias, msg):
     """
     Logs debug information.
@@ -127,6 +127,7 @@ def log_debug(script_alias, msg):
     """
     log_activity(script_alias, msg, 'DEBUG')
 
+
 def log_warning(script_alias, msg):
     """
     Logs warning information.
@@ -147,6 +148,7 @@ def log_warning(script_alias, msg):
 
     """
     log_activity(script_alias, msg, 'WARNING')
+
 
 def log_error(script_alias, msg, terminate=False):
     """
@@ -171,6 +173,7 @@ def log_error(script_alias, msg, terminate=False):
     if terminate:
         exit(1)
 
+
 def log_critical(script_alias, msg, terminate=False):
     """
     Logs critical error information. If you want to log an exception use 'log_exception' instead.
@@ -193,6 +196,7 @@ def log_critical(script_alias, msg, terminate=False):
     log_activity(script_alias, msg, 'CRITICAL')
     if terminate:
         exit(1)
+
 
 def log_exception(script_alias, msg, terminate=False):
     """
@@ -224,6 +228,8 @@ def log_exception(script_alias, msg, terminate=False):
     log_activity(script_alias, msg, 'EXCEPTION')
     if terminate:
         exit(1)
+
+import ext
 
 
 if __name__ == '__main__':
