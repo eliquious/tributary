@@ -10,6 +10,7 @@ except ImportError:
     __revision__ = "UNKNOWN"
 
 import logging, sys
+import ext
 
 __all__ = ['log_script_activity', 'log_exception', 'log_info', 'log_debug', 'log_warning', 'log_error', 'log_critical', 'log_activity']
 
@@ -223,7 +224,6 @@ def log_exception(script_alias, msg, terminate=False):
     log_activity(script_alias, msg, 'EXCEPTION')
     if terminate:
         exit(1)
-
 
 
 if __name__ == '__main__':
