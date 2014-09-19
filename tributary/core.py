@@ -11,7 +11,7 @@ from gevent import Greenlet
 from gevent.queue import Queue, Empty
 from gevent.pool import Group
 
-__all__ = ['BasePredicate', 'BaseOverride', 'Message', 'Actor']
+__all__ = ['BasePredicate', 'BaseOverride', 'Message', 'Actor', 'Engine', 'ExecutionContext', 'Service']
 
 def deser(obj):
     """Default JSON serializer."""
@@ -181,12 +181,12 @@ class Message(object):
 
 class Actor(Greenlet):
     """This is the base class for every node in the process tree. `Actor` manages the children of the various process nodes."""
-    def __init__(self, name, verbose=False):
+    def __init__(self, name):
         super(Actor, self).__init__()
         self.inbox = Queue()
         self.name = name
         self.running = False
-        self.verbose = verbose
+        self._context = None
 
         # stores results of node if required
         # self._state = Message()
@@ -216,7 +216,18 @@ class Actor(Greenlet):
         # self.on(events.KILL, self.kill)
 
         # listen to exceptions
-        self.link_exception(self.handle_exception)
+        self.link_exception(self.handleException)
+
+    def setContext(self, ctx):
+        """Sets the execution context"""
+        ctx.addActor(self)
+        self._context = ctx
+        for child in self.children:
+            child.setContext(ctx)
+
+    def getContext(self):
+        """Gets the execution context"""
+        return self._context
 
     def tick(self):
         """Yields the event loop to another node"""
@@ -226,7 +237,7 @@ class Actor(Greenlet):
         """Makes the node sleep for the given seconds"""
         gevent.sleep(seconds)
 
-    def handle_exception(self, exc):
+    def handleException(self, exc):
         pass
 
     def stop(self):
@@ -484,6 +495,7 @@ class Engine(object):
     def __init__(self):
         super(Engine, self).__init__()
         self.nodes = []
+        self._context = ExecutionContext()
 
     def _link(self, node):
         print node
@@ -491,8 +503,7 @@ class Engine(object):
     def add(self, node):
         """Adds a node to the engine to be executed"""
         validateType('node', Actor, node)
-        # node.inbox.put(events.StartMessage)
-        # node.link(self._link)
+        node.setContext(self._context)
         self.nodes.append(node)
     
     def start(self):
@@ -518,82 +529,45 @@ class Engine(object):
         # for node in self.nodes:
         #     gevent.joinall(list(node.children))
 
+class ExecutionContext(object):
+    """docstring for ExecutionContext"""
+    def __init__(self):
+        super(ExecutionContext, self).__init__()
+        self.actors = {}
+        self.services = {}
+
+    def addActor(self, actor):
+        """Adds an actor to the execution context"""
+        if isinstance(actor, Actor)
+            self.actors[actor.name] = actor
+        else:
+            raise Exception("Not an actor: " + str(actor))
+
+    def sendTo(self, actor_name, channel, msg, forward=False):
+        """Allows sending a message to another actor which is not directly listening"""
+        if actor_name in self.actors:
+            self.actors[actor_name].emit(channel, msg, forward)
+        else:
+            raise Exception("Actor not found: " + actor_name)
+
+    def addService(self, srv):
+        """Adds a service to the context. Services are not actors. They are meant to be used if global state needs to be maintained."""
+        if isinstance(srv, Service)
+            self.services[srv.name] = srv
+        else:
+            raise Exception("Not a service: " + str(actor))
+
+    def getService(self, name):
+        """Returns a service reference"""
+        if srv in self.services:
+            return self.services[name]
+        else:
+            raise Exception("Service not found: " + name)
+
+class Service(object):
+    """docstring for Service"""
+    def __init__(self, name):
+        super(Service, self).__init__()
+        self.name = name
+
 from . import events
-
-# class BaseDataSource(Actor):
-#     """docstring for DataSource"""
-#     def __init__(self, name):
-#         super(BaseDataSource, self).__init__(name)
-#         reset()
-
-#         # maintains process state
-#         self.processed = False
-
-#     def reset(self):
-#         """Clears all filters, overrides and messages from the data source"""
-#         self.state = Message(name=self.name, data=[], modifiers=[])
-
-#     def __str__(self):
-#         if self.processed:
-#             return "<%s: %s>" % (self.__class__.__name__, self.name)
-#         else:
-#             return "<%s: %s (%s)>" % (self.__class__.__name__, self.name, "Not processed yet")
-
-#     def addFilter(self, _filter):
-#         """Adds a Filter for this specific data source"""
-#         validateType("filter", BasePredicate, _filter)
-#         self.modifiers.append(_filter)
-#         return self
-
-#     def addOverride(self, override):
-#         """Adds an override"""
-#         validateType("arg", BaseOverride, override)
-#         self.modifiers.append(override)
-#         return self
-
-#     def addDataPoint(self, state):
-#         """Adds a data point to this source if it is not filtered"""
-#         validateType("state", DataPoint, state)
-
-#         for modifier in self.modifiers:
-#             if isinstance(modifier, BaseOverride):
-#                 if modifier.isOverriden(state):
-#                     state = modifier.override(state)
-#             elif isinstance(modifier, BasePredicate):
-#                 if not modifier.apply(state):
-#                     return
-
-#         # relates each statevector to this data source
-#         state.source_name = self.name
-
-#         #Adds the state vector only if the state has not been filtered
-#         self.states.append(state)
-
-#     def process(self, _input=None):
-#         """This method must be overriden"""
-#         raise NotImplementedYet("process")
-
-#     def getDataPoints(self):
-#         """Returns all the states for this data source"""
-#         return self.states
-
-#     def removeAllDataPoints(self):
-#         self.states = []
-
-#     def execute(self, _input=None):
-#         """Executes the preProcess, process and postProcess methods"""
-#         if not self.processed:
-#             self.log("Processing...")
-#             self.preProcess(_input)
-#             self.process(_input)
-#             self.postProcess(_input)
-#             self.processed = True
-
-#             self.scatter()
-#             self.gather()
-#             self.log("Exiting...")
-
-#     def hasBeenProcessed(self):
-#         """Returns whether this data source has been processed before"""
-#         return self.processed
-
