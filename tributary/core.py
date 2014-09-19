@@ -3,6 +3,7 @@
 
 from tributary import *
 from . import exceptions
+from .log import *
 from .utilities import validateType
 import datetime, calendar, json
 import gevent
@@ -34,12 +35,14 @@ class BasePredicate(object):
     def apply(self, message):
         raise NotImplementedError("apply")
 
+
 class BaseOverride(object):
     """BaseOverride is the parent class for all overrides."""
 
     def apply(self, message):
         """Overrides the message (or it's contents) with something else. This method should return the updated message."""
         raise NotImplementedError("apply")
+
 
 class MessageContent(object):
     """docstring for MessageContent"""
@@ -55,7 +58,7 @@ class MessageContent(object):
         try:
             return hasattr(self, name) #stacktrace is currently suppressed
         except:
-            tributary.log_exception("Message", "Attribute: %s" % name)
+            log_exception("Message", "Attribute: %s" % name)
             exit()
 
     def get(self, name, default=None):
@@ -216,7 +219,7 @@ class Actor(Greenlet):
         self.link_exception(self.handle_exception)
 
     def tick(self):
-        """Yeilds the event loop to another node"""
+        """Yields the event loop to another node"""
         gevent.sleep(0)
 
     def sleep(self, seconds):
@@ -335,7 +338,7 @@ class Actor(Greenlet):
         #             waiting = True
         #     self.tick()
 
-        self.log("Flushing Queue...")
+        self.log_debug("Flushing Queue...")
         if not self.inbox.empty():
             for message in self.inbox:
                 self.handle(message)
@@ -345,7 +348,7 @@ class Actor(Greenlet):
         """Executes the preProcess, process, postProcess, scatter and gather methods"""
         self.running = True
 
-        self.log("Starting...")
+        self.log_info("Starting...")
         while self.running:
             # self.log("Running...")
             try:
@@ -362,7 +365,7 @@ class Actor(Greenlet):
 
         # self.tick()
         # self.stop()
-        self.log("Exiting...")
+        self.log_info("Exiting...")
 
     def _run(self):
         self.execute()
@@ -380,8 +383,7 @@ class Actor(Greenlet):
         message.channel = channel
         message.forward = forward
         # message.source = self
-        if self.verbose:
-            self.log("Sending message: %s on channel: %s" % (message, channel))
+        self.log_debug("Sending message: %s on channel: %s" % (message, channel))
         for child in self.children:
             child.inbox.put_nowait(message)
 
@@ -438,7 +440,7 @@ class Actor(Greenlet):
 
         # forwards message if allowed
         if message.forward:
-            # self.log("Forwarding message on channel: %s" % message.channel)
+            self.log_trace("Forwarding message on channel: %s" % message.channel)
             for child in self.children:
                 # child.handle(message)
                 child.inbox.put_nowait(message)
@@ -446,7 +448,35 @@ class Actor(Greenlet):
 
     def log(self, msg):
         """Logging capability is baked into every Node."""
-        log_activity(str(self.name).upper(), msg, str(type(self).__name__))
+        self.log_info(msg)
+
+    def log_debug(self, msg):
+        """Logs a DEBUG message"""
+        log_debug(str(self.name).upper(), msg)
+
+    def log_info(self, msg):
+        """Logs an INFO message"""
+        log_info(str(self.name).upper(), msg)
+
+    def log_warning(self, msg):
+        """Logs a WARNING message"""
+        log_warning(str(self.name).upper(), msg)
+
+    def log_error(self, msg):
+        """Logs an ERROR message"""
+        log_error(str(self.name).upper(), msg)
+
+    def log_critical(self, msg):
+        """Logs a CRITICAL message"""
+        log_critical(str(self.name).upper(), msg)
+
+    def log_exception(self, msg):
+        """Logs an exception"""
+        log_exception(str(self.name).upper(), msg)
+
+    def log_trace(self, msg):
+        """Logs low-level debug message"""
+        log_trace(str(self.name).upper(), msg)
 
 
 class Engine(object):
