@@ -492,10 +492,15 @@ class Actor(Greenlet):
 
 class Engine(object):
     """docstring for Engine"""
-    def __init__(self):
+    def __init__(self, ctx=None):
         super(Engine, self).__init__()
         self.nodes = []
-        self._context = ExecutionContext()
+
+        # set execution context
+        if ctx:
+            self._context = ctx
+        else:
+            self._context = ExecutionContext()
 
     def _link(self, node):
         print node
@@ -538,7 +543,7 @@ class ExecutionContext(object):
 
     def addActor(self, actor):
         """Adds an actor to the execution context"""
-        if isinstance(actor, Actor)
+        if isinstance(actor, Actor):
             self.actors[actor.name] = actor
         else:
             raise Exception("Not an actor: " + str(actor))
@@ -552,14 +557,14 @@ class ExecutionContext(object):
 
     def addService(self, srv):
         """Adds a service to the context. Services are not actors. They are meant to be used if global state needs to be maintained."""
-        if isinstance(srv, Service)
+        if isinstance(srv, Service):
             self.services[srv.name] = srv
         else:
             raise Exception("Not a service: " + str(actor))
 
     def getService(self, name):
         """Returns a service reference"""
-        if srv in self.services:
+        if name in self.services:
             return self.services[name]
         else:
             raise Exception("Service not found: " + name)

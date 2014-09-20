@@ -192,8 +192,7 @@ class StreamProducer(StreamElement):
         # message.source = self
 
         if self.validate(message):
-            if self.verbose:
-                self.log("Sending message: %s on channel: %s" % (message, channel))
+            self.log_debug("Sending message: %s on channel: %s" % (message, channel))
 
             for child in self.children:
                 child.inbox.put_nowait(message)
