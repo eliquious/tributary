@@ -55,18 +55,10 @@ class SkipLimitPredicate(BasePredicate):
 class StreamElement(Actor):
     """Streams send their processed data to their children as soon as they have
     finished processing it themselves."""
-    def __init__(self, name, alwaysScatter=True):
+    def __init__(self, name):
         super(StreamElement, self).__init__(name)
         # set to True on the first message received
         self.initialized = False
-
-        # Defaults to True. If True, this nodes' state are
-        # published to the child nodes on every message
-        # This can be set to False for certain types of nodes, such as Sinks.
-        # Sinks never publish their state to their child nodes until finished.
-        # This can also be set to False if the scattering is handled manually
-        # inside the process function.
-        self.alwaysScatter = alwaysScatter
 
         # The nodes' state are stored here. This variable should be set
         # each time a new message is received (in the process function). This
@@ -195,7 +187,7 @@ class StreamProducer(StreamElement):
             self.log_debug("Sending message: %s on channel: %s" % (message, channel))
 
             for child in self.children:
-                child.inbox.put_nowait(message)
+                child.insert(message)
 
         # yields to event loop
         self.tick()
