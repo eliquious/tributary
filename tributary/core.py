@@ -231,7 +231,7 @@ class Actor(Greenlet):
 
     def tick(self):
         """Yields the event loop to another node"""
-        self.log_trace("Yielding...")
+        # self.log_trace("Yielding...")
         gevent.sleep(0)
 
     def sleep(self, seconds):
@@ -436,7 +436,7 @@ class Actor(Greenlet):
         """Registers event listeners based on a channel.
         Note: All functions registered should have 2 arguments. The first is current node (ie. self) and the second is the data being transferred.
         """
-        self.log_debug("Registering function on channel '%s'" % (channel))
+        self.log_trace("Registering function on channel '%s'" % (channel))
         if channel in self.listeners:
             self.listeners[channel].append(function)
         else:

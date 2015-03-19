@@ -11,6 +11,6 @@ STOP = 'tributary.stop'
 START = 'tributary.start'
 KILL = 'tributary.kill'
 
-StopMessage = Message.create(STOP, False)
+StopMessage = Message.create(STOP, True)
 StartMessage = Message.create(START, True)
 KillMessage = Message.create(KILL, True)
