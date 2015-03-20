@@ -536,6 +536,11 @@ class Engine(object):
         for node in self.nodes:
             node.stop()
 
+        # joining all the services
+        for name, svc in self._context.services.items():
+            log_script_activity("Engine", "Joining: %s" % name)
+            svc.join()
+
         elapsed = datetime.datetime.now() - start
         log_script_activity("Engine", "Elapsed: %s" % elapsed)
 
@@ -583,6 +588,8 @@ class Service(object):
         super(Service, self).__init__()
         self.name = name
 
+    def join(self):
+        pass
 
 class SynchronousActor(object):
     """This is the base class for any nodes in the process tree which need to execute synchronously."""
