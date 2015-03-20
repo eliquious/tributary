@@ -591,6 +591,39 @@ class Service(object):
     def join(self):
         pass
 
+    def log(self, msg):
+        """Logging capability is baked into every Node."""
+        self.log_info(msg)
+
+    def log_debug(self, msg):
+        """Logs a DEBUG message"""
+        log_debug(str(self.name).upper(), msg)
+
+    def log_info(self, msg):
+        """Logs an INFO message"""
+        log_info(str(self.name).upper(), msg)
+
+    def log_warning(self, msg):
+        """Logs a WARNING message"""
+        log_warning(str(self.name).upper(), msg)
+
+    def log_error(self, msg):
+        """Logs an ERROR message"""
+        log_error(str(self.name).upper(), msg)
+
+    def log_critical(self, msg):
+        """Logs a CRITICAL message"""
+        log_critical(str(self.name).upper(), msg)
+
+    def log_exception(self, msg):
+        """Logs an exception"""
+        log_exception(str(self.name).upper(), msg)
+
+    def log_trace(self, msg):
+        """Logs low-level debug message"""
+        log_trace(str(self.name).upper(), msg)
+
+
 class SynchronousActor(object):
     """This is the base class for any nodes in the process tree which need to execute synchronously."""
     def __init__(self, name):
