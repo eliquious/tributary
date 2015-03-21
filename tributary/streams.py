@@ -10,6 +10,7 @@ not store any messages but instead pass them along to any child nodes.
 import tributary
 from .core import Actor, BasePredicate, BaseOverride, Message
 from .utilities import validateType
+from .events import StartMessage, StopMessage, START, STOP
 from gevent.queue import Empty
 
 class LimitPredicate(BasePredicate):
@@ -106,7 +107,7 @@ class StreamElement(Actor):
             valid = True
             
             try:
-                message = self.inbox.get_nowait()
+                message = self.inbox.get()
 
                 # Iterates over all the filters and overrides to modify the
                 # stream's default capability.
@@ -163,8 +164,12 @@ class StreamProducer(StreamElement):
         # start
         self.log("Starting...")
 
+        self.emit(START, StartMessage, forward=True)
+
         # process
         self.process(None)
+
+        self.emit(STOP, StopMessage, forward=True)
 
         # done
         self.log("Exiting...")
