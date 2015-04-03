@@ -100,7 +100,9 @@ class MessageContent(object):
         self.set(name, value)
 
     def __str__(self):
-        return json.dumps(dict(self), default=deser)
+        keys = ', '.join([('%s=%s' % (k, v)) for k, v in self.items()])
+        return 'Message(%s)' % keys.encode('string-escape')
+        # return json.dumps(dict(self), default=deser)
 
 class Message(object):
     """
@@ -176,8 +178,14 @@ class Message(object):
     def __iter__(self):
         return iter(self.__dict__)
 
-    def __str__(self):
-        return json.dumps((self.__dict__), default=deser)
+    def __repr__(self):
+        return '%s(channel=%s, datetime=%s, forward=%s, data=%s)' % (
+            type(self).__name__,
+            self.channel,
+            self.datetime, 
+            self.forward,
+            self.data)
+        # return json.dumps((self.__dict__), default=deser)
 
 class Actor(Greenlet):
     """This is the base class for every node in the process tree. `Actor` manages the children of the various process nodes."""
@@ -564,7 +572,8 @@ class ExecutionContext(object):
     def sendTo(self, actor_name, channel, msg, forward=False):
         """Allows sending a message to another actor which is not directly listening"""
         if actor_name in self.actors:
-            self.actors[actor_name].emit(channel, msg, forward)
+            self.actors[actor_name].handle(Message.create(channel, forward, **dict(msg.data.items())))
+            # self.actors[actor_name].emit(channel, msg, forward)
         else:
             raise Exception("Actor not found: " + actor_name)
 
@@ -817,7 +826,7 @@ class SynchronousActor(object):
         message.channel = channel
         message.forward = forward
         # message.source = self
-        self.log_debug("Sending message: %s on channel: %s" % (message, channel))
+        self.log_trace("Sending message: %s on channel: %s" % (message, channel))
         for child in self.children:
             child.handle(message)
             # child.inbox.put_nowait(message)
@@ -831,7 +840,7 @@ class SynchronousActor(object):
             message.channel = channel
             message.forward = forward
             # message.source = self
-            self.log_debug("Sending message: %s on channel: %s" % (message, channel))
+            self.log_trace("Sending message: %s on channel: %s" % (message, channel))
             for child in self.children:
                 child.handle(message)
                 # child.inbox.queue.extend(messages)
